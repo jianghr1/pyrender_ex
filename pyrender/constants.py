@@ -54,6 +54,9 @@ class RenderFlags(object):
     FLAT = 4096
     """Render the color buffer flat, with no lighting computations."""
     SEG = 8192
+    """Segementation. Object color will be assign by given array"""
+    PANORAMA = 16384
+    INVDEPTH = 32768
 
 
 class TextAlign:

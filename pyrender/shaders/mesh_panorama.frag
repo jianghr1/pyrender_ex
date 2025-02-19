@@ -199,7 +199,7 @@ vec3 get_normal()
 #ifdef NORMAL_LOC
     return frag_normal;
 #else
-    return normalize(cam_pos - frag_position);
+    return -normalize(cam_pos - frag_position);
 #endif
 
 #endif
@@ -350,7 +350,7 @@ void main()
     // Loop over lights
     for (int i = 0; i < n_directional_lights; i++) {
         vec3 direction = directional_lights[i].direction;
-        vec3 v = normalize(cam_pos - frag_position); // Vector towards camera
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
         vec3 l = normalize(-1.0 * direction);   // Vector towards light
 
         // Compute attenuation and radiance
@@ -376,7 +376,7 @@ void main()
 
     for (int i = 0; i < n_point_lights; i++) {
         vec3 position = point_lights[i].position;
-        vec3 v = normalize(cam_pos - frag_position); // Vector towards camera
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
         vec3 l = normalize(position - frag_position); // Vector towards light
 
         // Compute attenuation and radiance
@@ -391,7 +391,7 @@ void main()
     }
     for (int i = 0; i < n_spot_lights; i++) {
         vec3 position = spot_lights[i].position;
-        vec3 v = normalize(cam_pos - frag_position); // Vector towards camera
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
         vec3 l = normalize(position - frag_position); // Vector towards light
 
         // Compute attenuation and radiance
@@ -424,7 +424,7 @@ void main()
     // Calculate lighting from environment
 #ifdef USE_IBL
     // 计算环境光照
-    vec3 v = normalize(cam_pos - frag_position);
+    vec3 v = -normalize(cam_pos - frag_position);
     vec3 r = reflect(-v, n);
 
     // 漫反射环境光

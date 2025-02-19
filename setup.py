@@ -1,5 +1,5 @@
 """
-Setup of pyrender Python codebase.
+Setup of pyrender_zlw_alias Python codebase.
 
 Author: Matthew Matl
 """
@@ -44,7 +44,7 @@ docs_requirements = [
 
 
 setup(
-    name = 'pyrender',
+    name = 'pyrender_zlw_alias',
     version=__version__,
     description='Easy-to-use Python renderer for 3D visualization',
     long_description='A simple implementation of Physically-Based Rendering '
@@ -52,7 +52,7 @@ setup(
     author='Matthew Matl',
     author_email='matthewcmatl@gmail.com',
     license='MIT License',
-    url = 'https://github.com/mmatl/pyrender',
+    url = 'https://github.com/mmatl/pyrender_zlw_alias',
     classifiers = [
         'Development Status :: 4 - Beta',
         'License :: OSI Approved :: MIT License',
@@ -65,7 +65,7 @@ setup(
         'Topic :: Scientific/Engineering'
     ],
     keywords = 'rendering graphics opengl 3d visualization pbr gltf',
-    packages = ['pyrender', 'pyrender.platforms'],
+    packages = ['pyrender_zlw_alias', 'pyrender_zlw_alias.platforms'],
     setup_requires = requirements,
     install_requires = requirements,
     extras_require={

@@ -432,6 +432,21 @@ class IntrinsicsCamera(Camera):
 
         return P
 
+class PanoramaCamera(Camera):
+    def __init__(self,
+                 zfar=1,
+                 name=None):
+        super(PanoramaCamera, self).__init__(
+            znear=0,
+            zfar=zfar,
+            name=name,
+        )
+    def get_projection_matrix(self, width=None, height=None):
+        P = np.eye(4)
+        P[3][3] = self.zfar
+        print(P)
+        return P
+
 
 __all__ = ['Camera', 'PerspectiveCamera', 'OrthographicCamera',
-           'IntrinsicsCamera']
+           'IntrinsicsCamera', 'PanoramaCamera']

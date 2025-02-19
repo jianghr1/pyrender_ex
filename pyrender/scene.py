@@ -553,7 +553,7 @@ class Scene(object):
 
     @staticmethod
     def from_trimesh_scene(trimesh_scene,
-                           bg_color=None, ambient_light=None):
+                           bg_color=None, ambient_light=None, smooth=True):
         """Create a :class:`.Scene` from a :class:`trimesh.scene.scene.Scene`.
 
         Parameters
@@ -571,7 +571,7 @@ class Scene(object):
             A scene containing the same geometry as the trimesh scene.
         """
         # convert trimesh geometries to pyrender geometries
-        geometries = {name: Mesh.from_trimesh(geom)
+        geometries = {name: Mesh.from_trimesh(geom, smooth=smooth)
                       for name, geom in trimesh_scene.geometry.items()}
 
         # create the pyrender scene object

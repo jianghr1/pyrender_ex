@@ -102,7 +102,7 @@ class OffscreenRenderer(object):
             retval = self._renderer.render(scene, flags, seg_node_map)
         else:
             self._renderer.render(scene, flags, seg_node_map)
-            depth = self._renderer.read_depth_buf()
+            depth = self._renderer.read_depth_buf(flags)
             if flags & RenderFlags.DEPTH_ONLY:
                 retval = depth
             else:

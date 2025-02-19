@@ -245,7 +245,7 @@ class Renderer(object):
 
         return color_im
 
-    def read_depth_buf(self):
+    def read_depth_buf(self, flags):
         """Read and return the current viewport's color buffer.
 
         Returns
@@ -259,22 +259,31 @@ class Renderer(object):
         depth_buf = glReadPixels(
             0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT
         )
-
-        depth_im = np.frombuffer(depth_buf, dtype=np.float32)
-        depth_im = depth_im.reshape((height, width))
-        depth_im = np.flip(depth_im, axis=0)
-
-        inf_inds = (depth_im == 1.0)
-        depth_im = 2.0 * depth_im - 1.0
-        z_near, z_far = self._latest_znear, self._latest_zfar
-        noninf = np.logical_not(inf_inds)
-        if z_far is None:
-            depth_im[noninf] = 2 * z_near / (1.0 - depth_im[noninf])
+        
+        if flags & RenderFlags.PANORAMA:
+            depth_im = np.frombuffer(depth_buf, dtype=np.float32)
+            depth_im = depth_im.reshape((height, width))
+            depth_im = np.flip(depth_im, axis=0)
+            depth_im = 2.0 * depth_im - 1.0
+            z_far = self._latest_zfar
+            depth_im = depth_im * z_far
+            
         else:
-            depth_im[noninf] = ((2.0 * z_near * z_far) /
-                                (z_far + z_near - depth_im[noninf] *
-                                (z_far - z_near)))
-        depth_im[inf_inds] = 0.0
+            depth_im = np.frombuffer(depth_buf, dtype=np.float32)
+            depth_im = depth_im.reshape((height, width))
+            depth_im = np.flip(depth_im, axis=0)
+            inf_inds = (depth_im == 1.0)
+            depth_im = 2.0 * depth_im - 1.0
+            z_near = self._latest_znear
+            z_far = self._latest_zfar
+            noninf = np.logical_not(inf_inds)
+            if z_far is None:
+                depth_im[noninf] = 2 * z_near / (1.0 - depth_im[noninf])
+            else:
+                depth_im[noninf] = ((2.0 * z_near * z_far) /
+                                    (z_far + z_near - depth_im[noninf] *
+                                    (z_far - z_near)))
+            depth_im[inf_inds] = 0.0
 
         # Resize for macos if needed
         if sys.platform == 'darwin':
@@ -903,8 +912,12 @@ class Renderer(object):
                 not flags & RenderFlags.DEPTH_ONLY and
                 not flags & RenderFlags.FLAT and
                 not flags & RenderFlags.SEG):
-            vertex_shader = 'mesh.vert'
-            fragment_shader = 'mesh.frag'
+            if (flags & RenderFlags.PANORAMA):
+                vertex_shader = 'mesh_panorama.vert'
+                fragment_shader = 'mesh_panorama.frag'
+            else:
+                vertex_shader = 'mesh.vert'
+                fragment_shader = 'mesh.frag'
         elif bool(program_flags & (ProgramFlags.VERTEX_NORMALS |
                                    ProgramFlags.FACE_NORMALS)):
             vertex_shader = 'vertex_normals.vert'
@@ -914,7 +927,10 @@ class Renderer(object):
                 geometry_shader = 'vertex_normals.geom'
             fragment_shader = 'vertex_normals.frag'
         elif flags & RenderFlags.FLAT:
-            vertex_shader = 'flat.vert'
+            if (flags & RenderFlags.PANORAMA):
+                vertex_shader = 'mesh_panorama.vert'
+            else:
+                vertex_shader = 'flat.vert'
             fragment_shader = 'flat.frag'
         elif flags & RenderFlags.SEG:
             vertex_shader = 'segmentation.vert'
@@ -1017,7 +1033,12 @@ class Renderer(object):
         glViewport(0, 0, self.viewport_width, self.viewport_height)
         glEnable(GL_DEPTH_TEST)
         glDepthMask(GL_TRUE)
-        glDepthFunc(GL_LESS)
+        if flags & RenderFlags.INVDEPTH:
+            glDepthFunc(GL_GREATER)
+            glClearDepth(0.0)
+        else:
+            glDepthFunc(GL_LESS)
+            glClearDepth(1.0)
         glDepthRange(0.0, 1.0)
 
     def _configure_shadow_mapping_viewport(self, light, flags):
@@ -1035,6 +1056,7 @@ class Renderer(object):
         glEnable(GL_DEPTH_TEST)
         glDepthMask(GL_TRUE)
         glDepthFunc(GL_LESS)
+        glClearDepth(1.0)
         glDepthRange(0.0, 1.0)
         glDisable(GL_CULL_FACE)
         glDisable(GL_BLEND)
@@ -1147,21 +1169,29 @@ class Renderer(object):
         depth_buf = glReadPixels(
             0, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT
         )
-        depth_im = np.frombuffer(depth_buf, dtype=np.float32)
-        depth_im = depth_im.reshape((height, width))
-        depth_im = np.flip(depth_im, axis=0)
-        inf_inds = (depth_im == 1.0)
-        depth_im = 2.0 * depth_im - 1.0
-        z_near = scene.main_camera_node.camera.znear
-        z_far = scene.main_camera_node.camera.zfar
-        noninf = np.logical_not(inf_inds)
-        if z_far is None:
-            depth_im[noninf] = 2 * z_near / (1.0 - depth_im[noninf])
+        if flags & RenderFlags.PANORAMA:
+            depth_im = np.frombuffer(depth_buf, dtype=np.float32)
+            depth_im = depth_im.reshape((height, width))
+            depth_im = np.flip(depth_im, axis=0)
+            z_far = scene.main_camera_node.camera.zfar
+            depth_im = depth_im * z_far
+            
         else:
-            depth_im[noninf] = ((2.0 * z_near * z_far) /
-                                (z_far + z_near - depth_im[noninf] *
-                                (z_far - z_near)))
-        depth_im[inf_inds] = 0.0
+            depth_im = np.frombuffer(depth_buf, dtype=np.float32)
+            depth_im = depth_im.reshape((height, width))
+            depth_im = np.flip(depth_im, axis=0)
+            inf_inds = (depth_im == 1.0)
+            depth_im = 2.0 * depth_im - 1.0
+            z_near = scene.main_camera_node.camera.znear
+            z_far = scene.main_camera_node.camera.zfar
+            noninf = np.logical_not(inf_inds)
+            if z_far is None:
+                depth_im[noninf] = 2 * z_near / (1.0 - depth_im[noninf])
+            else:
+                depth_im[noninf] = ((2.0 * z_near * z_far) /
+                                    (z_far + z_near - depth_im[noninf] *
+                                    (z_far - z_near)))
+            depth_im[inf_inds] = 0.0
 
         # Resize for macos if needed
         if sys.platform == 'darwin':
