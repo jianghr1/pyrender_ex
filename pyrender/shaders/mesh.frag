@@ -440,7 +440,7 @@ void main()
         vec2 uvIrradiance = directionToEquirectUV(n);
         vec3 irradiance = texture(env_lights[i].env_texture, uvIrradiance).rgb;
         // Compute outbound color
-        vec3 res = compute_brdf(n, v, n, roughness, metallic,`
+        vec3 res = compute_brdf(n, v, n, roughness, metallic,
                                 f0, c_diff, base_color.rgb, irradiance);
         color.xyz += res * env_lights[i].intensity;
     }

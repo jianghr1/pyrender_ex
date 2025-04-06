@@ -65,6 +65,7 @@ class Renderer(object):
         self._meshes = set()
         self._mesh_textures = set()
         self._shadow_textures = set()
+        self._env_textures = set()
         self._texture_alloc_idx = 0
 
     @property
