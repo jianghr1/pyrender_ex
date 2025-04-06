@@ -46,6 +46,7 @@ class Texture(object):
                  height=None,
                  tex_type=GL_TEXTURE_2D,
                  data_format=GL_UNSIGNED_BYTE):
+        self.data_format = data_format
         self.source_channels = source_channels
         self.name = name
         self.sampler = sampler
@@ -53,7 +54,6 @@ class Texture(object):
         self.width = width
         self.height = height
         self.tex_type = tex_type
-        self.data_format = data_format
 
         self._texid = None
         self._is_transparent = False
@@ -94,7 +94,13 @@ class Texture(object):
         if value is None:
             self._source = None
         else:
-            self._source = format_texture_source(value, self.source_channels)
+            if self.data_format == GL_UNSIGNED_BYTE:
+                self._source = format_texture_source(value, self.source_channels)
+            else:
+                if isinstance(value, np.ndarray) and np.issubdtype(value.dtype, np.floating):
+                    self._source = value
+                else:
+                    self._source = format_texture_source(value, self.source_channels).astype(np.float32) / 255
         self._is_transparent = False
 
     @property

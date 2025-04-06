@@ -64,7 +64,7 @@ def format_texture_source(texture, target_channels='RGB'):
     # Format numpy arrays
     if isinstance(texture, np.ndarray):
         if np.issubdtype(texture.dtype, np.floating):
-            texture = np.array(texture * 255.0, dtype=np.uint8)
+            texture = np.array(texture.clip(0,1) * 255.0, dtype=np.uint8)
         elif np.issubdtype(texture.dtype, np.integer):
             texture = texture.astype(np.uint8)
         else:

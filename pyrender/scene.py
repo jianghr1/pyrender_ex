@@ -9,7 +9,7 @@ import trimesh
 
 from .mesh import Mesh
 from .camera import Camera
-from .light import Light, PointLight, DirectionalLight, SpotLight
+from .light import Light, PointLight, DirectionalLight, SpotLight, EnvLight
 from .node import Node
 from .utils import format_color_vector
 
@@ -58,6 +58,7 @@ class Scene(object):
         self._point_light_nodes = set()
         self._spot_light_nodes = set()
         self._directional_light_nodes = set()
+        self._env_light_nodes = set()
         self._camera_nodes = set()
         self._main_camera_node = None
         self._bounds = None
@@ -142,14 +143,14 @@ class Scene(object):
     def lights(self):
         """set of :class:`Light` : The lights in the scene.
         """
-        return self.point_lights | self.spot_lights | self.directional_lights
+        return self.point_lights | self.spot_lights | self.directional_lights | self.env_lights
 
     @property
     def light_nodes(self):
         """set of :class:`Node` : The nodes containing lights.
         """
         return (self.point_light_nodes | self.spot_light_nodes |
-                self.directional_light_nodes)
+                self.directional_light_nodes | self.env_light_nodes)
 
     @property
     def point_lights(self):
@@ -188,6 +189,14 @@ class Scene(object):
         """
         return self._directional_light_nodes
 
+    @property
+    def env_light_nodes(self):
+        return self._env_light_nodes
+
+    @property
+    def env_lights(self):
+        return set([n.light for n in self.env_light_nodes])
+    
     @property
     def cameras(self):
         """set of :class:`Camera` : The cameras in the scene.
@@ -380,6 +389,8 @@ class Scene(object):
                 self._spot_light_nodes.add(node)
             if isinstance(node.light, DirectionalLight):
                 self._directional_light_nodes.add(node)
+            if isinstance(node.light, EnvLight):
+                self._env_light_nodes.add(node)
         if node.camera is not None:
             self._camera_nodes.add(node)
             if self._main_camera_node is None:
@@ -491,6 +502,7 @@ class Scene(object):
         self._point_light_nodes = set()
         self._spot_light_nodes = set()
         self._directional_light_nodes = set()
+        self._env_light_nodes = set()
         self._camera_nodes = set()
         self._main_camera_node = None
         self._bounds = None
@@ -543,6 +555,8 @@ class Scene(object):
                 self._spot_light_nodes.remove(node)
             if isinstance(node.light, DirectionalLight):
                 self._directional_light_nodes.remove(node)
+            if isinstance(node.light, EnvLight):
+                self._env_light_nodes.remove(node)
         if node.camera is not None:
             self._camera_nodes.remove(node)
             if self._main_camera_node == node:

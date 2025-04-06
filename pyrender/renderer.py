@@ -12,7 +12,7 @@ from .constants import (RenderFlags, TextAlign, GLTF, BufFlags, TexFlags,
                         SHADOW_TEX_SZ, MAX_N_LIGHTS)
 from .shader_program import ShaderProgramCache
 from .material import MetallicRoughnessMaterial, SpecularGlossinessMaterial
-from .light import PointLight, SpotLight, DirectionalLight
+from .light import PointLight, SpotLight, DirectionalLight, EnvLight
 from .font import FontCache
 from .utils import format_color_vector
 
@@ -315,6 +315,7 @@ class Renderer(object):
         self._meshes = set()
         self._mesh_textures = set()
         self._shadow_textures = set()
+        self._env_textures = set()
         self._texture_alloc_idx = 0
 
         self._delete_main_framebuffer()
@@ -635,13 +636,16 @@ class Renderer(object):
         n_d = min(len(scene.directional_light_nodes), max_n_lights[0])
         n_s = min(len(scene.spot_light_nodes), max_n_lights[1])
         n_p = min(len(scene.point_light_nodes), max_n_lights[2])
+        n_e = min(len(scene.env_light_nodes), max_n_lights[3])
         program.set_uniform('ambient_light', scene.ambient_light)
         program.set_uniform('n_directional_lights', n_d)
         program.set_uniform('n_spot_lights', n_s)
         program.set_uniform('n_point_lights', n_p)
+        program.set_uniform('n_env_lights', n_e)
         plc = 0
         slc = 0
         dlc = 0
+        elc = 0
 
         light_nodes = scene.light_nodes
         if (len(scene.directional_light_nodes) > max_n_lights[0] or
@@ -657,7 +661,15 @@ class Renderer(object):
             position = pose[:3,3]
             direction = -pose[:3,2]
 
-            if isinstance(light, PointLight):
+            if isinstance(light, EnvLight):
+                if elc == max_n_lights[3]:
+                    continue
+                b = 'env_lights[{}].'.format(elc)
+                elc += 1
+                self._bind_texture(light.env_texture, b + 'env_texture', program)
+                shadow = False
+            
+            elif isinstance(light, PointLight):
                 if plc == max_n_lights[2]:
                     continue
                 b = 'point_lights[{}].'.format(plc)
@@ -677,13 +689,17 @@ class Renderer(object):
                 program.set_uniform(b + 'position', position)
                 program.set_uniform(b + 'light_angle_scale', las)
                 program.set_uniform(b + 'light_angle_offset', lao)
-            else:
+                
+            elif isinstance(light, DirectionalLight):
                 if dlc == max_n_lights[0]:
                     continue
                 b = 'directional_lights[{}].'.format(dlc)
                 dlc += 1
                 shadow = bool(flags & RenderFlags.SHADOWS_DIRECTIONAL)
                 program.set_uniform(b + 'direction', direction)
+
+            else:
+                raise NotImplementedError
 
             program.set_uniform(b + 'color', light.color)
             program.set_uniform(b + 'intensity', light.intensity)
@@ -770,6 +786,7 @@ class Renderer(object):
         self._mesh_textures = mesh_textures.copy()
 
         shadow_textures = set()
+        env_textures = set()
         for l in scene.lights:
             # Create if needed
             active = False
@@ -781,7 +798,11 @@ class Renderer(object):
                 active = True
             elif isinstance(l, SpotLight) and flags & RenderFlags.SHADOWS_SPOT:
                 active = True
-
+            elif isinstance(l, EnvLight):
+                active = False
+                if l.env_texture is not None:
+                    env_textures.add(l.env_texture)
+                
             if active and l.shadow_texture is None:
                 l._generate_shadow_texture()
             if l.shadow_texture is not None:
@@ -795,7 +816,14 @@ class Renderer(object):
         for texture in self._shadow_textures - shadow_textures:
             texture.delete()
 
+        for texture in env_textures - self._env_textures:
+            texture._add_to_context()
+        
+        for texture in self._env_textures - env_textures:
+            texture.delete()
+        
         self._shadow_textures = shadow_textures.copy()
+        self._env_textures = env_textures.copy()
 
     ###########################################################################
     # Texture Management
@@ -863,7 +891,7 @@ class Renderer(object):
         return program
 
     def _compute_max_n_lights(self, flags):
-        max_n_lights = [MAX_N_LIGHTS, MAX_N_LIGHTS, MAX_N_LIGHTS]
+        max_n_lights = [MAX_N_LIGHTS, MAX_N_LIGHTS, MAX_N_LIGHTS, MAX_N_LIGHTS]
         n_tex_units = glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS)
 
         # Reserved texture units: 6
@@ -914,10 +942,9 @@ class Renderer(object):
                 not flags & RenderFlags.SEG):
             if (flags & RenderFlags.PANORAMA):
                 vertex_shader = 'mesh_panorama.vert'
-                fragment_shader = 'mesh_panorama.frag'
             else:
                 vertex_shader = 'mesh.vert'
-                fragment_shader = 'mesh.frag'
+            fragment_shader = 'mesh.frag'
         elif bool(program_flags & (ProgramFlags.VERTEX_NORMALS |
                                    ProgramFlags.FACE_NORMALS)):
             vertex_shader = 'vertex_normals.vert'
@@ -976,6 +1003,7 @@ class Renderer(object):
         defines['MAX_DIRECTIONAL_LIGHTS'] = max_n_lights[0]
         defines['MAX_SPOT_LIGHTS'] = max_n_lights[1]
         defines['MAX_POINT_LIGHTS'] = max_n_lights[2]
+        defines['MAX_ENV_LIGHTS'] = max_n_lights[3]
 
         # Set up vertex normal defines
         if program_flags & ProgramFlags.VERTEX_NORMALS:
@@ -1055,8 +1083,12 @@ class Renderer(object):
         glViewport(0, 0, SHADOW_TEX_SZ, SHADOW_TEX_SZ)
         glEnable(GL_DEPTH_TEST)
         glDepthMask(GL_TRUE)
-        glDepthFunc(GL_LESS)
-        glClearDepth(1.0)
+        if flags & RenderFlags.INVDEPTH:
+            glDepthFunc(GL_GREATER)
+            glClearDepth(0.0)
+        else:
+            glDepthFunc(GL_LESS)
+            glClearDepth(1.0)
         glDepthRange(0.0, 1.0)
         glDisable(GL_CULL_FACE)
         glDisable(GL_BLEND)

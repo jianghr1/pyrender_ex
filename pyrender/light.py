@@ -9,7 +9,7 @@ import six
 
 from OpenGL.GL import *
 
-from .utils import format_color_vector
+from .utils import format_color_vector, format_texture_source
 from .texture import Texture
 from .constants import SHADOW_TEX_SZ
 from .camera import OrthographicCamera, PerspectiveCamera
@@ -119,6 +119,53 @@ class Light(object):
         """
         pass
 
+class EnvLight(Light):
+    def __init__(self,
+                 env_texture=None,
+                 intensity=None,
+                 name=None):
+        super(EnvLight, self).__init__(
+            color=None,
+            intensity=intensity,
+            name=name,
+        )
+        self.env_texture = env_texture
+
+    def _generate_shadow_texture(self, size=None):
+        """Generate a shadow texture for this light.
+
+        Parameters
+        ----------
+        size : int, optional
+            Size of texture map. Must be a positive power of two.
+        """
+        if size is None:
+            size = SHADOW_TEX_SZ
+        self.shadow_texture = Texture(width=size, height=size,
+                                      source_channels='D', data_format=GL_FLOAT)
+
+    @property
+    def env_texture(self):
+        """(n,n,3) float or :class:`Texture` : The environment light map.
+        """
+        return self._env_texture
+
+    @env_texture.setter
+    def env_texture(self, value):
+        # TODO TMP
+        self._env_texture = self._format_texture(value, 'RGB')
+    
+    def _get_shadow_camera(self, scene_scale):
+        raise NotImplementedError
+
+    def _format_texture(self, texture, target_channels='RGB'):
+        """Format a texture as a float32 np array.
+        """
+        if isinstance(texture, Texture) or texture is None:
+            return texture
+        else:
+            return Texture(source=texture, source_channels=target_channels, data_format=GL_FLOAT)
+            
 
 class DirectionalLight(Light):
     """Directional lights are light sources that act as though they are

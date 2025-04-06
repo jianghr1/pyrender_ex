@@ -1,6 +1,6 @@
 from .camera import (Camera, PerspectiveCamera, OrthographicCamera,
                      IntrinsicsCamera)
-from .light import Light, PointLight, DirectionalLight, SpotLight
+from .light import Light, PointLight, DirectionalLight, SpotLight, EnvLight
 from .sampler import Sampler
 from .texture import Texture
 from .material import Material, MetallicRoughnessMaterial
@@ -16,7 +16,7 @@ from .constants import RenderFlags, TextAlign, GLTF
 
 __all__ = [
     'Camera', 'PerspectiveCamera', 'OrthographicCamera', 'IntrinsicsCamera',
-    'Light', 'PointLight', 'DirectionalLight', 'SpotLight',
+    'Light', 'PointLight', 'DirectionalLight', 'SpotLight', "EnvLight",
     'Sampler', 'Texture', 'Material', 'MetallicRoughnessMaterial',
     'Primitive', 'Mesh', 'Node', 'Scene', 'Renderer', 'Viewer',
     'OffscreenRenderer', '__version__', 'RenderFlags', 'TextAlign',

@@ -40,6 +40,12 @@ struct PointLight {
     #endif
 };
 
+struct EnvLight {
+    vec3 color;
+    float intensity;
+    sampler2D env_texture;
+};
+
 struct Material {
     vec3 emissive_factor;
 
@@ -100,13 +106,10 @@ uniform DirectionalLight directional_lights[MAX_DIRECTIONAL_LIGHTS];
 uniform int n_directional_lights;
 uniform SpotLight spot_lights[MAX_SPOT_LIGHTS];
 uniform int n_spot_lights;
+uniform EnvLight env_lights[MAX_ENV_LIGHTS];
+uniform int n_env_lights;
 uniform vec3 cam_pos;
 uniform vec3 ambient_light;
-
-#ifdef USE_IBL
-uniform samplerCube diffuse_env;
-uniform samplerCube specular_env;
-#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 // Inputs
@@ -199,7 +202,7 @@ vec3 get_normal()
 #ifdef NORMAL_LOC
     return frag_normal;
 #else
-    return normalize(cam_pos - frag_position);
+    return -normalize(cam_pos - frag_position);
 #endif
 
 #endif
@@ -308,6 +311,16 @@ float shadow_calc(mat4 light_matrix, sampler2D shadow_map, float nl)
     return shadow;
 }
 
+// 将方向向量转换为等距圆柱投影贴图的 UV 坐标
+vec2 directionToEquirectUV(vec3 dir) {
+    // 确保方向向量归一化
+    dir = normalize(dir);
+    // 计算 UV 坐标
+    float u = 0.5 + atan(dir.z, dir.x) / (2.0 * 3.14159265359);
+    float v = 0.5 - asin(dir.y) / 3.14159265359;
+    return vec2(u, v);
+}
+
 ///////////////////////////////////////////////////////////////////////////////
 // MAIN
 ///////////////////////////////////////////////////////////////////////////////
@@ -350,7 +363,7 @@ void main()
     // Loop over lights
     for (int i = 0; i < n_directional_lights; i++) {
         vec3 direction = directional_lights[i].direction;
-        vec3 v = normalize(cam_pos - frag_position); // Vector towards camera
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
         vec3 l = normalize(-1.0 * direction);   // Vector towards light
 
         // Compute attenuation and radiance
@@ -376,7 +389,7 @@ void main()
 
     for (int i = 0; i < n_point_lights; i++) {
         vec3 position = point_lights[i].position;
-        vec3 v = normalize(cam_pos - frag_position); // Vector towards camera
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
         vec3 l = normalize(position - frag_position); // Vector towards light
 
         // Compute attenuation and radiance
@@ -389,9 +402,10 @@ void main()
                                 f0, c_diff, base_color.rgb, radiance);
         color.xyz += res;
     }
+
     for (int i = 0; i < n_spot_lights; i++) {
         vec3 position = spot_lights[i].position;
-        vec3 v = normalize(cam_pos - frag_position); // Vector towards camera
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
         vec3 l = normalize(position - frag_position); // Vector towards light
 
         // Compute attenuation and radiance
@@ -421,33 +435,16 @@ void main()
     }
     color.xyz += base_color.xyz * ambient_light;
 
-    // Calculate lighting from environment
-#ifdef USE_IBL
-    // 计算环境光照
-    vec3 v = normalize(cam_pos - frag_position);
-    vec3 r = reflect(-v, n);
-
-    // 漫反射环境光
-    vec3 irradiance = texture(diffuse_env, n).rgb;
-    vec3 diffuse_ibl = irradiance * c_diff;
-
-    // 镜面反射环境光
-    float mip_count = 8.0; // 取决于预计算的环境贴图的mip级别数
-    float lod = roughness * (mip_count - 1.0);
-    vec3 specular_ibl = textureLod(specular_env, r, lod).rgb;
-
-    // 环境光的菲涅尔项
-    vec3 F = specular_reflection(PBRInfo(0.0, clamp(dot(n, v), 0.001, 1.0), 0.0, 0.0, 0.0, roughness, metallic, f0, c_diff));
+    for (int i = 0; i < n_env_lights; i++) {
+        vec3 v = -normalize(cam_pos - frag_position); // Vector towards camera
+        vec2 uvIrradiance = directionToEquirectUV(n);
+        vec3 irradiance = texture(env_lights[i].env_texture, uvIrradiance).rgb;
+        // Compute outbound color
+        vec3 res = compute_brdf(n, v, n, roughness, metallic,`
+                                f0, c_diff, base_color.rgb, irradiance);
+        color.xyz += res * env_lights[i].intensity;
+    }
     
-    // 环境光强度
-    vec3 kS = F;
-    vec3 kD = (1.0 - kS) * (1.0 - metallic);
-
-    // 组合环境光
-    vec3 env_lighting = (kD * diffuse_ibl + specular_ibl * (kS * (1.0 - roughness))) * ambient_light;
-    
-    color.xyz += env_lighting;
-#endif
 
     // Apply occlusion
 #ifdef HAS_OCCLUSION_TEX
