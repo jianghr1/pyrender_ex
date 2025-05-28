@@ -246,6 +246,97 @@ class Renderer(object):
             
         return color_im
 
+    def render_id(self, scene, flags):
+        """Render World Pos of a scene with the given set of flags.
+
+        Parameters
+        ----------
+        scene : :class:`Scene`
+            A scene to render.
+        flags : int
+            A specification from :class:`.RenderFlags`.
+
+        Returns
+        -------
+        position : (h, w, 4) float32
+            If :attr:`RenderFlags.OFFSCREEN` is set, the position buffer (X,Y,Z,alpha).
+        """
+        # Update context with meshes and textures
+        self._update_context(scene, flags)
+        
+        # Set up viewport for render
+        self._configure_faceid_pass_viewport(flags)
+
+        # Clear it
+        glClearColor(0.0, 0.0, 0.0, 0.0)
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+
+        glDisable(GL_MULTISAMPLE)
+
+        # Set up camera matrices
+        V, P = self._get_camera_matrices(scene)
+
+        program = None
+        
+        primitive_index = int(0)
+        
+        # Now, render each object in sorted order
+        for node in self._sorted_mesh_nodes(scene):
+            mesh = node.mesh
+
+            # Skip the mesh if it's not visible
+            if not mesh.is_visible:
+                continue
+
+            for primitive in mesh.primitives:
+
+                # First, get and bind the appropriate program
+                program = self._get_primitive_program(
+                    primitive, flags, ProgramFlags.OBJECT_ID
+                )
+                program._bind()
+                program.set_uniform('PID', primitive_index, unsigned=True)
+                # Set the camera uniforms
+                program.set_uniform('V', V)
+                program.set_uniform('P', P)
+                program.set_uniform(
+                    'cam_pos', scene.get_pose(scene.main_camera_node)[:3,3]
+                )
+
+                # Finally, bind and draw the primitive
+                self._bind_and_draw_primitive(
+                    primitive=primitive,
+                    pose=scene.get_pose(node),
+                    program=program,
+                    flags=flags
+                )
+                self._reset_active_textures()
+                primitive_index = primitive_index + 1
+
+        # Unbind the shader and flush the output
+        if program is not None:
+            program._unbind()
+        glFlush()
+        
+        width, height = self._pos_fb_dims[0], self._pos_fb_dims[1]
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, self._pos_fb)
+
+        # Read color
+        color_buf = glReadPixels(
+            0, 0, width, height, GL_RGB_INTEGER, GL_UNSIGNED_INT
+        )
+        color_im = np.frombuffer(color_buf, dtype=np.uint32).reshape((height, width, 3))
+        color_im = np.flip(color_im, axis=0)
+
+        # Resize for macos if needed
+        if sys.platform == 'darwin':
+            # color_im = self._resize_image(color_im, True)
+            assert False, "I'd rather FUCK MacOS"
+            
+        return color_im
+
     def render_text(self, text, x, y, font_name='OpenSans-Regular',
                     font_pt=40, color=None, scale=1.0,
                     align=TextAlign.BOTTOM_LEFT):
@@ -1050,6 +1141,8 @@ class Renderer(object):
                 vertex_shader = 'mesh.vert'
             if (bool(program_flags & ProgramFlags.POSITION)):
                 fragment_shader = 'pos.frag'
+            elif (bool(program_flags & ProgramFlags.OBJECT_ID)):
+                fragment_shader = 'id.frag'
             elif flags & RenderFlags.FLAT:
                 fragment_shader = 'flat.frag'
             else:
@@ -1122,7 +1215,7 @@ class Renderer(object):
             elif isinstance(primitive.material, SpecularGlossinessMaterial):
                 defines['USE_GLOSSY_MATERIAL'] = 1
         
-        print('Program:', vertex_shader, fragment_shader, geometry_shader)
+        # print('Program:', vertex_shader, fragment_shader, geometry_shader)
         program = self._program_cache.get_program(
             vertex_shader=vertex_shader,
             fragment_shader=fragment_shader,
@@ -1160,6 +1253,22 @@ class Renderer(object):
 
     def _configure_pos_pass_viewport(self, flags):
         self._configure_pos_framebuffer()
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self._pos_fb)
+        glViewport(0, 0, self.viewport_width, self.viewport_height)
+        glEnable(GL_DEPTH_TEST)
+        glDepthMask(GL_TRUE)
+        if flags & RenderFlags.INVDEPTH:
+            glDepthFunc(GL_GREATER)
+            glClearDepth(0.0)
+        else:
+            glDepthFunc(GL_LESS)
+            glClearDepth(1.0)
+        glDepthRange(0.0, 1.0)
+        glDisable(GL_CULL_FACE)
+        glDisable(GL_BLEND)
+
+    def _configure_faceid_pass_viewport(self, flags):
+        self._configure_faceid_framebuffer()
         glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self._pos_fb)
         glViewport(0, 0, self.viewport_width, self.viewport_height)
         glEnable(GL_DEPTH_TEST)
@@ -1395,6 +1504,43 @@ class Renderer(object):
 
             self._pos_fb_dims = (self.viewport_width, self.viewport_height)
 
+    def _configure_faceid_framebuffer(self):
+        # If mismatch with prior framebuffer, delete it
+        if (self._pos_fb is not None and
+                self.viewport_width != self._pos_fb_dims[0] or
+                self.viewport_height != self._pos_fb_dims[1]):
+            self._delete_pos_framebuffer()
+
+        # If framebuffer doesn't exist, create it
+        if self._pos_fb is None:
+            # Generate standard buffer
+            self._pos_cb, self._pos_db = glGenRenderbuffers(2)
+
+            glBindRenderbuffer(GL_RENDERBUFFER, self._pos_cb)
+            glRenderbufferStorage(
+                GL_RENDERBUFFER, GL_RGB32UI,
+                self.viewport_width, self.viewport_height
+            )
+
+            glBindRenderbuffer(GL_RENDERBUFFER, self._pos_db)
+            glRenderbufferStorage(
+                GL_RENDERBUFFER, GL_DEPTH_COMPONENT24,
+                self.viewport_width, self.viewport_height
+            )
+
+            self._pos_fb = glGenFramebuffers(1)
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, self._pos_fb)
+            glFramebufferRenderbuffer(
+                GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                GL_RENDERBUFFER, self._pos_cb
+            )
+            glFramebufferRenderbuffer(
+                GL_DRAW_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                GL_RENDERBUFFER, self._pos_db
+            )
+
+            self._pos_fb_dims = (self.viewport_width, self.viewport_height)
+    
     def _delete_pos_framebuffer(self):
         if self._pos_fb is not None:
             glDeleteFramebuffers(1, [self._pos_fb])

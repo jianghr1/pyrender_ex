@@ -255,7 +255,8 @@ class ShaderProgram(object):
                     glUniform1i(loc, int(value))
             else:
                 raise ValueError('Invalid data type')
-        except Exception:
+        except Exception as e:
+            # print(e)
             pass
 
     _FUNC_MAP = {

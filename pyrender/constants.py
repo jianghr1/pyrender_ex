@@ -148,5 +148,6 @@ class ProgramFlags:
     VERTEX_NORMALS = 2
     FACE_NORMALS = 4
     POSITION = 8
+    OBJECT_ID = 16
 
 __all__ = ['RenderFlags', 'TextAlign', 'GLTF']

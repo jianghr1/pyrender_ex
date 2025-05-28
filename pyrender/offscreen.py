@@ -149,6 +149,42 @@ class OffscreenRenderer(object):
         self._platform.make_uncurrent()
         return retval
 
+    def render_id(self, scene, flags=RenderFlags.NONE):
+        """Render World Pos of a scene with the given set of flags.
+
+        Parameters
+        ----------
+        scene : :class:`Scene`
+            A scene to render.
+        flags : int
+            A specification from :class:`.RenderFlags`.
+
+        Returns
+        -------
+        position : (h, w, 4) float32
+            If :attr:`RenderFlags.OFFSCREEN` is set, the position buffer (X,Y,Z,alpha).
+        """
+        self._platform.make_current()
+        # If platform does not support dynamically-resizing framebuffers,
+        # destroy it and restart it
+        if (self._platform.viewport_height != self.viewport_height or
+                self._platform.viewport_width != self.viewport_width):
+            if not self._platform.supports_framebuffers():
+                self.delete()
+                self._create()
+
+        self._platform.make_current()
+        self._renderer.viewport_width = self.viewport_width
+        self._renderer.viewport_height = self.viewport_height
+        self._renderer.point_size = self.point_size
+
+        flags |= RenderFlags.OFFSCREEN
+        retval = self._renderer.render_id(scene, flags)
+        
+        # Make the platform not current
+        self._platform.make_uncurrent()
+        return retval
+    
     def delete(self):
         """Free all OpenGL resources.
         """
